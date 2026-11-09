@@ -1,15 +1,43 @@
 {
-  "team_id": "TEXAMPLE",
-  "owner_user_id": "UOWNER",
-  "max_changes": 10,
+  "version": 1,
+  "slack": { "teamId": "TEXAMPLE", "ownerUserId": "UOWNER" },
+  "linearWorkspaceId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "maxChanges": 10,
+  "pollIntervalSeconds": 300,
   "sections": {
-    "Todo": {"name": "Linear Todo", "create": true},
-    "Started": {"name": "Linear Active", "create": true},
-    "Done": {"name": "Linear Done", "create": true}
+    "needs-leon": { "name": "Needs Leon", "create": true },
+    "awaiting": { "name": "Awaiting", "create": true },
+    "blocked": { "name": "Blocked", "create": true },
+    "active": { "name": "In Progress", "create": true },
+    "done": { "name": "Done", "create": true }
+  },
+  "mappings": {
+    "issue": {
+      "Needs Leon": "needs-leon",
+      "Awaiting": "awaiting",
+      "Blocked": "blocked",
+      "In Progress": "active",
+      "Done": "done"
+    },
+    "project": {
+      "Needs Leon": "needs-leon",
+      "Awaiting": "awaiting",
+      "Blocked": "blocked",
+      "In Progress": "active",
+      "Completed": "done"
+    }
   },
   "entities": [
-    {"type": "issue", "id": "DEMO-1", "channel_id": "CEXAMPLE"},
-    {"type": "project", "id": "11111111-1111-4111-8111-111111111111", "use_project_channel": true},
-    {"type": "issue", "id": "DEMO-2", "create_channel": {"prefix": "linear", "private": true}}
+    { "kind": "issue", "ref": "DEMO-1", "channel": { "id": "CEXISTING" } },
+    {
+      "kind": "project",
+      "ref": "22222222-2222-4222-8222-222222222222",
+      "channel": { "project": true }
+    },
+    {
+      "kind": "issue",
+      "ref": "DEMO-3",
+      "channel": { "create": { "prefix": "linear", "private": true } }
+    }
   ]
 }

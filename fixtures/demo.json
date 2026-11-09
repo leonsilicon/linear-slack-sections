@@ -1,0 +1,26 @@
+{
+  "teamId": "TEXAMPLE",
+  "ownerUserId": "UOWNER",
+  "snapshot": {
+    "workspaceId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "entities": [
+      { "kind": "issue", "id": "11111111-1111-4111-8111-111111111111", "status": "Needs Leon" },
+      {
+        "kind": "project",
+        "id": "22222222-2222-4222-8222-222222222222",
+        "status": "Awaiting",
+        "projectChannelId": "CPROJECT"
+      },
+      { "kind": "issue", "id": "33333333-3333-4333-8333-333333333333", "status": "Blocked" }
+    ]
+  },
+  "sections": [
+    { "id": "SNEEDS", "name": "Needs Leon", "channels": [] },
+    { "id": "SAWAIT", "name": "Awaiting", "channels": [] },
+    { "id": "SACTIVE", "name": "In Progress", "channels": ["CEXISTING", "CPROJECT", "CUNMANAGED"] }
+  ],
+  "channels": {
+    "CEXISTING": { "archived": false, "member": true, "private": true },
+    "CPROJECT": { "archived": false, "member": true, "private": false }
+  }
+}

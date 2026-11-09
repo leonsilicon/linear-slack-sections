@@ -1,0 +1,38 @@
+{
+  "mode": "dry-run",
+  "operations": [
+    {
+      "type": "create-section",
+      "section": "blocked",
+      "name": "Blocked"
+    },
+    {
+      "type": "move",
+      "entity": "TEXAMPLE:UOWNER:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:issue:11111111-1111-4111-8111-111111111111",
+      "section": "needs-leon",
+      "channel": "CEXISTING"
+    },
+    {
+      "type": "move",
+      "entity": "TEXAMPLE:UOWNER:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:project:22222222-2222-4222-8222-222222222222",
+      "section": "awaiting",
+      "channel": "CPROJECT"
+    },
+    {
+      "type": "create-channel",
+      "entity": "TEXAMPLE:UOWNER:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:issue:33333333-3333-4333-8333-333333333333",
+      "name": "linear-issue-1d72923c129e3c9f34ce",
+      "private": true
+    },
+    {
+      "type": "invite-owner",
+      "entity": "TEXAMPLE:UOWNER:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:issue:33333333-3333-4333-8333-333333333333"
+    },
+    {
+      "type": "move",
+      "entity": "TEXAMPLE:UOWNER:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:issue:33333333-3333-4333-8333-333333333333",
+      "section": "blocked"
+    }
+  ],
+  "verified": []
+}

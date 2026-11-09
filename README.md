@@ -1,79 +1,96 @@
 # Linear → Slack sections
 
-A local-first Python 3.11+ CLI that reconciles **explicitly configured** Linear issues and projects to native, personal Slack sidebar sections. Original MIT implementation; zero runtime dependencies. It can optionally create channels with a bot token and invite the sidebar owner. It never scans all Linear entities or reads Slack messages.
+A fresh Bun and TypeScript implementation that creates configured issue/project channels and reconciles them into **one user's native Slack sidebar sections** as Linear statuses change. Zero runtime npm dependencies. Persistent SQLite bindings, dry-run defaults, operation caps, readback verification, and an offline demo are included.
 
-**Experimental: Slack sidebar writes use undocumented `users.channelSections.*` endpoints. Tests are simulated integration/transport tests, not evidence of live Slack compatibility.** Custom sections require an eligible paid Slack plan and affect only the authenticated user's sidebar. Use only with your organization's approval.
+**Channel creation uses Slack's supported Web API. Personal sidebar movement uses undocumented `users.channelSections.*` methods. Live compatibility has not been tested.** This is experimental local software, not a supported OAuth-only integration. Read [RESEARCH.md](RESEARCH.md) and [SECURITY.md](SECURITY.md) before considering live use. Nothing is installed into Slack or Linear by building or testing this repository.
 
-## Install and run
+## Try it locally
 
-From the checkout, no install is necessary:
-
-```sh
-python3 -m linear_slack_sections --help
-```
-
-Or install locally in your own virtual environment (setuptools is a build-only requirement, not a runtime dependency):
+Requires Bun 1.3 or newer; verified here with Bun 1.4.4. Development dependencies are pinned in `bun.lock`.
 
 ```sh
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --no-deps .
-linear-slack-sections --help
+bun install --frozen-lockfile --ignore-scripts
+bun run demo
+bun run check
+bun run start --help
 ```
 
-Copy `config.example.json` to `config.json` with your local editor. All IDs in the example are fictional. Replace IDs and exact case-sensitive statuses; remove irrelevant bindings. Do not commit your actual config or credentials. Provide these environment variables through your local password manager or a non-logging secret-injection mechanism:
+The demo reads fictional [config](config.example.json) and [fixture data](fixtures/demo.json), prints six proposed operations, and uses no credentials or network. It keeps `Needs Leon`, `Awaiting`, and `Blocked` separate. Fixture mode refuses `--apply` and `--watch`.
 
-| Variable | Purpose |
-| --- | --- |
-| `LINEAR_API_KEY` | Linear read access to the explicitly named entities |
-| `SLACK_XOXC_TOKEN` | Your approved Slack user-session `xoxc-…` token |
-| `SLACK_D_COOKIE` | Raw value of the matching `d` cookie; **not** `d=…` or a whole Cookie header |
-| `SLACK_BOT_TOKEN` | Optional `xoxb-…` bot token, required for `create_channel` and unfinished creation retries |
-
-Do not paste credentials into chat, source files, shell command arguments/history, or public issues. The CLI does not extract credentials from browsers. See [SECURITY.md](SECURITY.md).
-
-```sh
-python -m linear_slack_sections --config config.json --dry-run
-python -m linear_slack_sections --config config.json --apply
-python -m linear_slack_sections --config config.json --watch --interval 60
-python -m linear_slack_sections --config config.json --apply --watch --interval 60
-```
-
-Default is preview: network reads only, no channel/section creation, invitations, moves, state writes or lock files. Watch without `--apply` repeats previews. JSON output contains the proposed/applied operation list, never credentials or API bodies. Errors exit 1; Ctrl-C exits 0. Invalid arguments use argparse's exit 2. Any sync error stops watch rather than replaying a potentially ambiguous creation.
+The old executable implementation is replaced on this branch and preserved in Git history at `e611629`. This is a new implementation, not a translation of that code. Old JSON state/config is deliberately not imported automatically.
 
 ## Configuration
 
-- `team_id` and `owner_user_id` must match session `auth.test`; an optional bot must belong to the **same** workspace. No cross-workspace routing or arbitrary API host configuration exists.
-- `max_changes` is a required positive operation budget checked before writes. A section creation, channel creation (including its initial invite), retry invitation, and move each count as one plan operation. It is not a raw HTTP-request quota. Even unused configured sections may be created, and count toward this budget.
-- `sections` maps exact Linear status names to `{"id":"SECTION_ID"}` or `{"name":"Exact section name","create":true}`. Name lookup refuses ambiguity. Without `create:true`, missing sections fail. Multiple statuses can target the same section. Unknown statuses fail the **whole sync** before any writes; no implicit status defaults.
-- Each `entities` item has `type` (`issue` or `project`) and `id` (canonical UUID; issues may instead use an exact identifier such as `DEMO-1`). Only these entities are fetched using official `issue(id:)` / `project(id:)` GraphQL queries. Issues use `state.name`; projects use `status.name`.
-- Exactly one binding mode: `channel_id`, project-only `use_project_channel:true` (reads `Project.slackChannelId`), or `create_channel:{"private":true,"prefix":"linear"}`. Creation requires an **explicit boolean** privacy choice; the supplied example uses private. Public creation requires deliberately setting `private:false`. Null project channel IDs fail; they do not trigger automatic creation.
-- One channel cannot be controlled by multiple configured entities, even if their statuses currently agree. Shared-channel issue aggregation is intentionally unsupported.
+Copy `config.example.json` to an ignored local `config.json` and edit it. The example IDs are fictional. Only explicitly configured entities are managed, with a limit of 50 per config. There is no account-wide discovery, message scan, or shared-channel issue aggregation.
 
-### Reconciliation, creation and retries
+| Field | Meaning |
+| --- | --- |
+| `slack.teamId`, `slack.ownerUserId` | Exact workspace and sidebar owner; checked using session `auth.test` |
+| `linearWorkspaceId` | Exact Linear organization UUID; checked in every snapshot |
+| `maxChanges` | Required cap, 1–200, on planned section creates, channel creates, owner invites, and moves; not an HTTP-request quota |
+| `pollIntervalSeconds` | 60–86400; default 300, used only with `--watch` |
+| `sections` | Local keys pointing to `{ "id": "..." }` or `{ "name": "Exact name", "create": true }`; creation defaults to false |
+| `mappings.issue`, `mappings.project` | Separate, exact case-sensitive Linear status name → section key maps |
+| `entities` | `kind` (`issue`/`project`), `ref`, and exactly one channel binding |
 
-`--apply` is explicit authorization to reconcile immediately, including the first run. Each poll fetches fresh statuses and section memberships, not a permanent handled-once ledger. **Manual moves of configured channels are deliberately undone on the next apply**, even without a Linear status transition. Remove a binding or stop the poller to preserve manual ownership. Unconfigured channels are untouched.
+Issue references can be identifiers such as `DEMO-1` or UUIDs; projects require UUIDs. Each snapshot is a single parameterized, aliased GraphQL query. Issues use `state.name`; projects use `status.name`. **Needs Leon** means Leon's input/action; **Awaiting** represents a third-party blocker; **Blocked** represents task dependencies. These are explicit workflow statuses configured by you, not inferred from descriptions, labels, or dependency graphs. Rename keys/status mappings to match the actual Linear workflow. Unknown or archived statuses/entities stop the entire preflight.
 
-Moves include insertion into the destination and removal from every source section. After every move a complete membership readback must show the channel in the destination and nowhere else before status success is saved. Partial/paginated membership, nonempty cursors, pagination flags, missing membership data or inconsistent counts fail closed; this version does **not** attempt undocumented pagination. Large workspaces may therefore be unsupported rather than partially modified.
+Channel binding examples:
 
-Created channel names are stable `PREFIX-TYPE-16HEX` values derived from team/type/Linear UUID, not mutable titles. Only explicit IDs or IDs already stored locally are reused. A name collision is an error, **never** permission to adopt an existing channel. The created ID is saved immediately before verification/invite, so a failed invite can retry without creating another channel. Readback checks the channel and owner membership (paginated). The bot needs appropriate public/private channel creation/manage and channel-info/member-read permissions; scopes and administrator policy must be confirmed for the target workspace (commonly `channels:manage`, `channels:read`, `groups:write`, `groups:read`). Existing-channel filing requires the session user already have access; the tool does not join channels.
-
-Default state: `~/.local/state/linear-slack-sections/state.json`; override with `--state PATH`. State is namespaced by Slack team and entity type+configured identifier. Writes use same-directory atomic replacement and mode 0600 on POSIX. Apply holds an exclusive adjacent `.lock`; previews do not mutate it. Use one trusted private state path per workspace/owner and all workers. The lock is local-filesystem coordination, not distributed locking. A crash leaves a lock: verify the PID/worker has stopped before manually removing it. Back up state: losing it after channel creation causes a conservative collision refusal. Changing an issue from identifier to UUID changes its state key; migrate trusted state or bind its channel ID explicitly.
-
-There is no transaction across Slack operations. Earlier verified operations/created channels may remain after a later error; retry reconciles actual state. An ambiguous network error during creation is **not automatically retried**: inspect Slack and explicitly bind any created channel before rerunning. A lost section-create response can be resolved by its unique name next run. No archive, delete, leave, read-marking, message access, or Linear writes exist.
-
-## Network and compatibility limits
-
-Only `https://api.linear.app/graphql` and `https://slack.com/api/…` are used. Redirects are refused to protect credentials. Requests time out after 20 seconds. Reads/idempotent operations retry transient network failures and HTTP 500/502/503/504 at most four total attempts. HTTP 429 honors numeric `Retry-After`, up to 120 seconds per wait (longer waits fail). Creation retries only explicit 429 responses, not ambiguous network/5xx failures. Errors omit remote response bodies and secrets. Response size is bounded to 8 MiB.
-
-Enterprise Grid organization-level sessions, alternative Slack routing hosts, Slack Connect edge cases, membership capacity and organization policies are **not live-verified**. The CLI intentionally has no Grid routing workaround; a failed identity/list/readback stops safely. Slack can change undocumented methods or membership schemas at any time; empty cursor + no pagination indication is treated as complete only for the supported response shape. Slack's own auto-organizing preferences or other organizers may conflict. This is not an official Slack/Linear integration and does not link newly created channels back into Linear.
-
-## Development and verification
-
-```sh
-python -W error -m unittest discover -s tests -v
+```json
+{ "id": "CEXISTING" }
+{ "project": true }
+{ "create": { "prefix": "linear", "private": true } }
 ```
 
-Tests use in-process fake transports/adapters with fictional data. CLI tests exercise real config parsing, official-client query generation, Slack form encoding, preview/apply/watch, actual temporary state files, and readback; HTTP tests inject an opener to simulate 429/network/redirect behavior. No credentials, live account writes, or external test services are required. GitHub Actions is not configured in this repository: the publishing integration cannot write workflow files. Local execution was verified on Python 3.13 and 3.14; Python 3.11 and 3.12 remain unverified.
+`project:true` is project-only and reads current `Project.slackChannelId`. An absent project channel is an error, not permission to create one. Creation requires an explicit boolean `private`; `false` deliberately requests a public channel. Generated names contain prefix, kind, and a stable 20-hex identity hash; titles/status changes do not rename channels. Name collisions are never adopted automatically.
 
-Public API-behavior references (not copied source): [Linear GraphQL](https://linear.app/developers/graphql), [Linear schema](https://github.com/linear/linear/blob/master/packages/sdk/src/schema.graphql), [Slack custom sections](https://slack.com/help/articles/360043207674-Organize-your-sidebar-with-custom-sections), [Slack conversations.create](https://docs.slack.dev/reference/methods/conversations.create/). Section payload behavior was researched in public implementations; undocumented means unsupported, regardless of test coverage.
+Multiple aliases resolving to one canonical Linear UUID are rejected before Slack access, even if their statuses agree. Two entities cannot control the same channel. Duplicate section names require an explicit section ID. Only sections used by current statuses can be created. Unmanaged channels remain untouched.
+
+## Live execution interface
+
+No live installation or activation was performed. The following commands describe the interface for a future, separately authorized compatibility test.
+
+Inject secrets from a local password manager into the process environment. Do not put them in config, arguments, shell history, chat, logs, or committed files:
+
+| Variable | Purpose |
+| --- | --- |
+| `LINEAR_API_KEY` | Read-only Linear API access to configured entities; sent as the raw API key |
+| `SLACK_XOXC_TOKEN` | Approved session credential for the sidebar owner |
+| `SLACK_D_COOKIE` | Raw matching `d` cookie value, without `d=` or other cookies |
+| `SLACK_BOT_TOKEN` | Required whenever a `create` binding exists, including retries of already-created channels |
+
+```sh
+# Live read-only plan; requires deliberate acceptance of the internal API boundary
+bun run start --config config.json --experimental-sidebar --dry-run
+
+# Apply the configured changes once
+bun run start --config config.json --experimental-sidebar --apply
+
+# Continuously reconcile, only when explicitly started
+bun run start --config config.json --experimental-sidebar --apply --watch
+```
+
+Both `--experimental-sidebar` and `--apply` are required for live mutations. No flags defaults to dry-run, and live sidebar reads also require the experimental flag. Dry runs open existing state read-only and create no state database or lock. `--watch` without apply repeats previews; every error stops watch. SIGINT/SIGTERM stop after the current reconciliation and wake an interval wait. No background service, hosted webhook endpoint, telemetry, or scheduler is installed.
+
+A bot must authenticate to the same workspace; it needs permission to create/read/invite/read members for the requested public/private channel type. Common scopes include `channels:manage`, `channels:read`, `groups:write`, and `groups:read`; consult each method's current documentation and workspace policy. This program does not install an app, grant scopes, acquire credentials, join existing channels, or change Linear data. Existing-channel bindings require the sidebar owner to already be a member. The bot invites the owner only for creation-managed bindings.
+
+## Reconciliation and recovery
+
+Every run fetches fresh statuses and actual memberships. Manual moves of configured channels are deliberately corrected on the next apply, even without a status transition. Remove the binding or stop watch to preserve manual ownership. A move removes every observed source membership and inserts the destination. A fresh readback must show **exactly one destination membership** before `verifiedStatus` is stored. Readback permits three short consistency checks. Previously saved status is the last verified observation, not a promise about current Slack state.
+
+Default database: `$XDG_STATE_HOME/linear-slack-sections/bindings.sqlite`, otherwise `~/.local/state/linear-slack-sections/bindings.sqlite`; override using `--state PATH`. Bindings use Slack workspace + sidebar owner + Linear workspace + kind + canonical UUID. Changing an issue reference from identifier to UUID therefore reuses its binding. SQLite uses full synchronous commits. New database and lock files use mode 0600, and new state directories use 0700. Use a trusted private local directory and a single shared state path for all instances managing the same sidebar. The exclusive adjacent `.lock` coordinates writers on that local filesystem; it is not a distributed lock. A crash leaves a lock: verify the process has stopped before removing it.
+
+Before `conversations.create`, a durable pending intent saves the generated name. After receiving the created ID it is saved immediately, before channel/membership verification or invitation. An invite failure resumes using that ID. A lost/invalid creation response leaves a pending intent and **blocks future creation**, including after restart. Inspect Slack and the saved name; if creation completed, set an explicit `channel.id` to the verified channel and rerun. If it did not complete, a human must clear only that pending record after inspection. A name collision follows the same conservative recovery path.
+
+Missing/inaccessible/archived saved channels, privacy mismatches, a changed native project channel, and a configured ID conflicting with saved state are errors. They never cause silent replacement or reattachment. Stop all writers, make a private backup, inspect the exact row in SQLite's `bindings` table, and reconcile that one row with the verified channel/config before rerunning. Do not delete the whole database to bypass a refusal: losing bindings may lead to collisions or extra channels. There is no archive/delete/uninvite/leave capability or automatic rollback.
+
+There is no transaction spanning Slack and SQLite. Earlier verified moves, created sections, channels or invitations may remain if a later step fails. Preflight validates the whole snapshot, current channel bindings, mappings and budget before remote writes; concurrent Slack/Linear changes can still occur during execution. A newly required move after planning stops with `DRIFT` rather than exceeding the plan. A future poll corrects changes after the snapshot.
+
+## Transport and compatibility
+
+Destinations are fixed to `https://api.linear.app/graphql` and `https://slack.com/api/…`. Redirects are disabled; requests have a 20-second timeout and 8 MiB response limit. Read/idempotent transport failures and 500/502/503/504 retry at most four attempts with bounded backoff. Explicit HTTP 429 honors `Retry-After` up to 60 seconds; longer waits fail for a later run. Channel/section creation retries explicit 429 only; ambiguous network/5xx/invalid-response failures are never replayed automatically. Linear GraphQL errors, even with partial data and HTTP 200, block a snapshot.
+
+Slack channel-member reads use cursor pagination. Internal section pagination has no verified contract: missing membership data, known nonempty cursors, pagination flags, inconsistent counts, or duplicate identities fail closed. Absence of such markers is accepted only for the specific tested shape; it cannot prove that an undocumented server never truncates silently. Enterprise Grid routing, Slack Connect behavior, organization policy, paid-plan eligibility, current session authentication, and actual internal endpoint schemas remain **unverified live**. No bot scope is claimed to grant personal-section writes. Slack may change these methods without notice.
+
+See [docs/VALIDATION.md](docs/VALIDATION.md) for the verified local results and coverage. All tests use in-process fake API responses, fictional credentials and temporary local state. They do not establish live Slack compatibility.

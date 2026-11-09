@@ -1,19 +1,16 @@
-name: test
+# Example only; no CI workflow is installed or triggered by this file.
+name: check
 on: [push, pull_request]
 permissions:
   contents: read
 jobs:
-  unittest:
+  check:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ['3.11', '3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: oven-sh/setup-bun@v2
         with:
-          python-version: ${{ matrix.python }}
-      - run: python -W error -m unittest discover -s tests -v
-      - run: python -m linear_slack_sections --help
-      - run: python -m pip install --no-deps .
-      - run: linear-slack-sections --help
+          bun-version: '1.4.4'
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run check
+      - run: bun run demo
